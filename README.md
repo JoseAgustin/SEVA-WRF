@@ -1,11 +1,11 @@
-# 🌫️ ddsinaica — Pipeline de Evaluación WRF-Chem vs SINAICA
+# 🌫️ SEVA-WRF — Sistema de Evaluación y Validación Atmosférica
 
 [![bash](https://img.shields.io/badge/bash-%E2%89%A54.0-blue?logo=gnu-bash)](#requisitos-del-sistema)
 [![python](https://img.shields.io/badge/python-%E2%89%A53.8-blue?logo=python)](#dependencias)
 [![license](https://img.shields.io/badge/license-MIT-green)](#licencia)
 [![version](https://img.shields.io/badge/versi%C3%B3n-2.7.0-orange)](#changelog)
 
-Pipeline operativo de descarga, procesamiento y validación estadística del pronóstico de calidad del aire producido por **WRF-Chem**, comparado contra observaciones horarias de la red **SINAICA/INECC**. Cubre **ocho zonas metropolitanas** del centro de México, evalúa **cuatro contaminantes** y está diseñado para ejecutarse de forma autónoma mediante crontab, publicando resultados en una página web estática actualizada cada día. Incluye módulos de **análisis mensual con diagramas de Taylor** e **informes de estadísticos dicotómicos** en formato Word.
+**SEVA-WRF** (*Sistema de Evaluación y Validación Atmosférica – WRF*) es una plataforma de validación operativa del modelo **WRF-Chem** para el pronóstico de calidad del aire en zonas metropolitanas del centro de México. Descarga y procesa observaciones horarias de la red **SINAICA/INECC**, extrae salidas WRF-Chem en tres horizontes (+24h, +48h, +72h) y calcula métricas continuas y dicotómicas para **ocho zonas metropolitanas** y **cuatro contaminantes**. Ejecuta de forma autónoma vía crontab, publica resultados diarios en página web estática e incluye análisis estadístico avanzado: **diagramas de Taylor**, **curvas de habilidad**, **Performance Diagram de Roebber**, **heatmaps de desempeño** e **informes dicotómicos** mensuales en Word.
 
 ---
 
@@ -182,8 +182,8 @@ pip install -r requirements.txt
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/JoseAgustin/ddsinaica.git
-cd ddsinaica
+git clone https://github.com/JoseAgustin/SEVA-WRF.git
+cd SEVA-WRF
 
 # 2. Crear y activar entorno Python
 python3 -m venv .venv
@@ -466,7 +466,7 @@ python3 informe_dicotomico.py --help
 ## Estructura del repositorio
 
 ```
-ddsinaica/
+SEVA-WRF/
 │
 ├── evaluacion_diaria.sh          # Orquestador diario (crontab)
 ├── sinaica_descarga.sh           # Descarga HTTP directa de SINAICA
