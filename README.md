@@ -1,696 +1,633 @@
-# 🌫️ SEVA-WRF — Sistema de Evaluación y Validación Atmosférica
+# 🌫️ SEVA-WRF — Sistema de Evaluación y Visualización Avanzada del Pronóstico WRF-Chem
 
 [![bash](https://img.shields.io/badge/bash-%E2%89%A54.0-blue?logo=gnu-bash)](#requisitos-del-sistema)
 [![python](https://img.shields.io/badge/python-%E2%89%A53.8-blue?logo=python)](#dependencias)
 [![license](https://img.shields.io/badge/license-MIT-green)](#licencia)
-[![version](https://img.shields.io/badge/versi%C3%B3n-2.7.0-orange)](#changelog)
+[![version](https://img.shields.io/badge/versi%C3%B3n-1.0.0-orange)](#changelog)
 
-**SEVA-WRF** (*Sistema de Evaluación y Validación Atmosférica – WRF*) es una plataforma de validación operativa del modelo **WRF-Chem** para el pronóstico de calidad del aire en zonas metropolitanas del centro de México. Descarga y procesa observaciones horarias de la red **SINAICA/INECC**, extrae salidas WRF-Chem en tres horizontes (+24h, +48h, +72h) y calcula métricas continuas y dicotómicas para **ocho zonas metropolitanas** y **cuatro contaminantes**. Ejecuta de forma autónoma vía crontab, publica resultados diarios en página web estática e incluye análisis estadístico avanzado: **diagramas de Taylor**, **curvas de habilidad**, **Performance Diagram de Roebber**, **heatmaps de desempeño** e **informes dicotómicos** mensuales en Word.
+Suite de herramientas Python para el **análisis estadístico avanzado**, **visualización del desempeño** y **pronóstico ponderado** del sistema de calidad del aire WRF-Chem, comparado contra observaciones horarias de la red **SINAICA/INECC** en ocho zonas metropolitanas del centro de México.
+
+SEVA-WRF complementa el pipeline operativo [ddsinaica](https://github.com/JoseAgustin/ddsinaica) con módulos de diagnóstico científico profundo: análisis por percentiles locales, curvas de habilidad multi-umbral, diagramas de Taylor y de Roebber, mapas de calor temporales y combinación ponderada de horizontes de pronóstico.
 
 ---
 
 ## Tabla de contenidos
 
 - [Descripción](#descripción)
-- [Arquitectura del flujo](#arquitectura-del-flujo)
-- [Requisitos del sistema](#requisitos-del-sistema)
-- [Dependencias](#dependencias)
-- [Instalación](#instalación)
-- [Configuración](#configuración)
-- [Uso](#uso)
-- [Diagramas de Taylor mensuales](#diagramas-de-taylor-mensuales)
-- [Informe de estadísticos dicotómicos](#informe-de-estadísticos-dicotómicos)
-- [Estructura del repositorio](#estructura-del-repositorio)
-- [Flujo de datos](#flujo-de-datos)
+- [Arquitectura](#arquitectura)
+- [Requisitos e instalación](#requisitos-e-instalación)
+- [Scripts Python](#scripts-python)
+  - [taylor_mensual.py](#1-taylor_mensualpy)
+  - [heatmap_desempeno.py](#2-heatmap_desempenopy)
+  - [roebber_desempeno.py](#3-roebber_desempenopy)
+  - [informe_dicotomico.py](#4-informe_dicotomicopy)
+  - [informe_graficas.py](#5-informe_graficaspy)
+  - [percentiles_obs.py](#6-percentiles_obspy)
+  - [curva_habilidad.py](#7-curva_habilidadpy)
+  - [analisis_espacial_percentil.py](#8-analisis_espacial_percentilpy)
+  - [pronostico_ponderado.py](#9-pronostico_ponderadopy)
 - [Ciudades y contaminantes](#ciudades-y-contaminantes)
-- [Métricas de validación](#métricas-de-validación)
-- [Manejo de errores](#manejo-de-errores)
+- [Umbrales normativos](#umbrales-normativos)
+- [Temporadas climáticas](#temporadas-climáticas)
+- [Flujo de trabajo recomendado](#flujo-de-trabajo-recomendado)
 - [Changelog](#changelog)
-- [Contribución](#contribución)
 - [Licencia](#licencia)
 
 ---
 
 ## Descripción
 
-El repositorio implementa cuatro modos de operación:
+SEVA-WRF implementa nueve módulos de análisis organizados en tres niveles:
 
-| Modo                        | Script principal          | Propósito |
-|------------------------------|---------------------------|-----------|
-| **Operativo diario**        | `evaluacion_diaria.sh`    | Ejecutado por crontab; descarga, procesa y publica el análisis del día anterior en HTML. |
-| **Histórico mensual**       | `01_extrae.py`            | Procesamiento manual de un mes completo; genera reportes Word con Bootstrap. |
-| **Diagnóstico continuo**    | `taylor_mensual.py`       | Diagramas de Taylor mensuales (σ, R, CRMSE normalizados) por Ciudad × Contaminante × Horizonte. |
-| **Diagnóstico dicotómico**  | `informe_dicotomico.py`   | Informe Word mensual de POD, FAR, CSI, TSS, PC y BIAS de frecuencia, evaluando la detección de episodios de excedencia normativa. |
-
-A partir de la **v2.0.0** la descarga de observaciones se realiza con `sinaica_descarga.sh` mediante HTTP directo al endpoint de SINAICA, eliminando la dependencia de R y `rsinaica`. Las versiones posteriores incorporaron SO₂, nuevas ciudades, correcciones de robustez y, en las **v2.5.0** y **v2.6.0**, los módulos de análisis estadístico mensual.
+| Nivel | Módulo | Función principal |
+|-------|--------|-------------------|
+| **Diagnóstico continuo** | `taylor_mensual.py` | Diagramas de Taylor mensuales (σ, R, CRMSE normalizados) |
+| **Diagnóstico dicotómico** | `informe_dicotomico.py` | Informe Word con POD, FAR, CSI, TSS, PC, BIAS por ciudad × mes |
+| **Visualización temporal** | `heatmap_desempeno.py` | Mapas de calor del desempeño por ciudad y mes |
+| **Visualización dicotómica** | `roebber_desempeno.py` | Diagrama de Roebber (trayectoria POD vs SR) |
+| **Informe integrado** | `informe_graficas.py` | Documento Word con todas las visualizaciones y sus descripciones |
+| **Análisis de percentiles** | `percentiles_obs.py` | Percentiles empíricos locales y comparación modelo vs obs |
+| **Curva de habilidad** | `curva_habilidad.py` | Sensibilidad del pronóstico a umbrales alternativos |
+| **Análisis espacial** | `analisis_espacial_percentil.py` | Evaluación dicotómica con umbrales adaptativos locales |
+| **Pronóstico ponderado** | `pronostico_ponderado.py` | Combinación de horizontes +24h/+48h/+72h por RMSE inverso |
 
 ---
 
-## Arquitectura del flujo
+## Arquitectura
 
 ```
-╔══════════════════════════════════════════════════════════════════╗
-║  OBSERVACIONES (SINAICA/INECC)                                   ║
-║                                                                  ║
-║  sinaica_descarga.sh                                             ║
-║  POST https://sinaica.inecc.gob.mx/pags/datGrafs.php             ║
-║  ┌─ por estación × contaminante × día ─┐                         ║
-║  │  tmp/raw_sinaica/<fecha>/*.csv      │                         ║
-║  └───────────────┬─────────────────────┘                         ║
-║                  ▼                                               ║
-║  [Normalización awk al formato del pipeline]                     ║
-║                  ▼                                               ║
-║  calidad_aire_pipeline.sh                                        ║
-║  ├─ salida/<Ciudad>_<Estacion>_<Cont>.csv                        ║
-║  └─ consolidado/<Ciudad>_<Cont>_consolidado.csv                  ║
-║                  │                                               ║
-║                  └───────────► observado/ ◄────────────────────┐ ║
-╚══════════════════════════════════════════════════════════╗     │ ║
-                                                           ║     │ ║
-╔══════════════════════════════════════════════════════════╝     │ ║
-║  MODELO (WRF-Chem / LUSTRE)                                    │ ║
-║                                                                │ ║
-║  wrfout_d01_YYYY-MM-DD_00:00:00 × 3 horizontes                 │ ║
-╚══════════════╤═════════════════════════════════════════════════╪═╝
-               │                                                 │
-               ▼                                                 │
-  extract_dia.py ─────────────────────────────────────────────── ┘
-  O3/SO2: máx. espacial ppbv (ppmv × 1000)
-  PM10/PM2.5: prom. de máx. espacial µg/m³
-               │
-               ▼
-  combinar_dia.py
-  obs_max + mod_dia1/dia2/dia3  por  ciudad × contaminante
-               │
-               ▼
-  stats_dia.py → stats_YYYY-MM-DD.json
-  (BIAS, RMSE, MAE, R; POD, FAR, CSI, TSS, PC — ventana 30 días)
-               │
-       ┌───────┴──────────────┐
-       ▼                      ▼
-  generar_html.py        actualizar_indice.py
-  web/YYYY/MM/           web/index.html
-  evaluacion_YYYY-MM-DD.html
-               │
-       ┌───────┴────────────────────────┐
-       ▼  (acumulado mensual)           ▼  (acumulado mensual)
-  taylor_mensual.py            informe_dicotomico.py
-  taylor_YYYY_MM.png           informe_dicotomico_YYYY_MM.docx
-  estadisticas_taylor.csv      dicotomico_stats.csv
+combinado/ajustados/
+└── eval_<CONT>_<Ciudad>_YYYY-MM-DD.csv
+    Fecha, Ciudad, max_obs, mod_dia1, mod_dia2, mod_dia3
+         │
+         ├─► taylor_mensual.py          → resultados_taylor/
+         │     taylor_YYYY_MM.png
+         │     estadisticas_taylor.csv
+         │
+         ├─► heatmap_desempeno.py       → resultados_heatmap/
+         │     heatmap_<CONT>_<MET>_<HOR>_<RES>_<CAT>.png
+         │
+         ├─► roebber_desempeno.py       → resultados_roebber/
+         │     roebber_<CONT>_<AGRUP>_<HOR>_<CAT>.png
+         │
+         ├─► informe_dicotomico.py      → informes_dicotomicos/
+         │     informe_dicotomico_<CAT>.docx
+         │     dicotomico_stats.csv
+         │
+         ├─► percentiles_obs.py         → resultados_percentiles/
+         │     percentiles_<CONT>_P<N>_heatmap_obs_<HOR>.png
+         │     percentiles_<CONT>_P<N>_heatmap_sesgo_<HOR>.png
+         │     percentiles_<CONT>_QQ_<HOR>.png
+         │     percentiles_<CONT>_serie_<Ciudad>_<HOR>.png
+         │     tabla_percentiles_<CONT>.csv
+         │
+         ├─► curva_habilidad.py         → resultados_curva_habilidad/
+         │     curva_habilidad_<CONT>_<HOR>_<AGRUP>.png
+         │     tabla_barrido_umbrales.csv
+         │
+         ├─► analisis_espacial_percentil.py → resultados_espacial_percentil/
+         │     espacial_<CONT>_<HOR>_<MODO>_P<N>.png
+         │     espacial_<CONT>_<HOR>_umbral_P<N>_<MODO>.png
+         │     espacial_<CONT>_<HOR>_delta_P<N>_<MODO>.png
+         │     espacial_<CONT>_<HOR>_comparacion_P<N>_<MODO>.png
+         │     tabla_espacial_percentil_<CONT>.csv
+         │
+         ├─► pronostico_ponderado.py    → resultados_ponderado/
+         │     pronostico_ponderado_HOY.csv
+         │     pronostico_ponderado_MANANA.csv
+         │     pesos_historicos.csv
+         │     serie_ponderada_historica.csv
+         │     pesos_por_temporada.png
+         │     pronostico_ponderado_<CONT>_serie.png
+         │     pronostico_ponderado_scatter.png
+         │
+         └─► informe_graficas.py        → informe_visualizaciones.docx
+               (recolecta todos los PNG y genera documento Word integrado)
 ```
 
-### Horizontes de pronóstico evaluados
-
-| Variable | Fecha del run | Horizonte     | Índices wrfout | Ventana local      |
-|----------|---------------|---------------|----------------|--------------------|
-| `RUN_D1` | Ayer          | +24 h (día 1) | 6–29           | 00:00–23:00 (24 h) |
-| `RUN_D2` | Antier        | +48 h (día 2) | 30–53          | 00:00–23:00 (24 h) |
-| `RUN_D3` | Antes de ayer | +72 h (día 3) | 54–71          | 00:00–17:00 (18 h) |
-
-El offset de 6 índices corresponde a UTC−6 (hora local del centro de México).
-
 ---
 
-## Requisitos del sistema
+## Requisitos e instalación
 
-| Componente     | Versión mínima | Notas |
-|----------------|----------------|-------|
-| bash           | 4.0            | Arrays asociativos (`declare -A`) |
-| curl           | 7.x            | Peticiones HTTP a SINAICA |
-| python3        | 3.8            | Scripts de análisis y generación de documentos |
-| awk, sort, sed | POSIX          | Procesamiento de CSV en bash |
-
-> `informe_dicotomico.py` genera documentos Word (`.docx`) usando **únicamente** el paquete Python `python-docx`. No se requiere Node.js, npm ni ningún otro runtime externo.
-
-> **macOS**: el bash instalado por defecto es la v3. Instalar `bash ≥ 4` con Homebrew (`brew install bash`) y apuntar el crontab a `/usr/local/bin/bash`.
-
----
-
-## Dependencias
-
-### Python
+### Python ≥ 3.8
 
 ```bash
-pip install -r requirements.txt
+pip install pandas numpy matplotlib scipy python-docx Pillow
 ```
 
-**`requirements.txt`**:
+| Paquete | Uso |
+|---------|-----|
+| `pandas` | Lectura y manipulación de CSV |
+| `numpy` | Cálculo numérico y estadístico |
+| `matplotlib` | Generación de todas las gráficas |
+| `scipy` | Correlación de Pearson, regresión, filtrado |
+| `python-docx` | Generación de documentos Word (.docx) |
+| `Pillow` | Inserción de imágenes en documentos Word |
+
+### Formato de entrada
+
+Todos los scripts leen archivos CSV del directorio `combinado/ajustados/` con el formato del pipeline [ddsinaica](https://github.com/JoseAgustin/ddsinaica):
 
 ```
-xarray>=0.19
-netCDF4>=1.5
-pandas>=1.3
-numpy>=1.21
-matplotlib>=3.4
-scipy>=1.7
-python-docx>=0.8
-python-dateutil>=2.8
-```
-
-| Paquete       | Introducido en | Uso |
-|---------------|----------------|-----|
-| `xarray`      | v1.0.0         | Lectura de wrfout NetCDF |
-| `netCDF4`     | v1.0.0         | Backend NetCDF |
-| `pandas`      | v1.0.0         | Manipulación de series temporales |
-| `numpy`       | v1.0.0         | Cálculo numérico |
-| `matplotlib`  | v2.5.0         | Diagramas de Taylor (PNG) |
-| `scipy`       | v2.5.0         | Correlación de Pearson en `taylor_mensual.py` |
-| `python-docx` | v2.6.0         | Generación de informes `.docx` en `informe_dicotomico.py` |
-| `python-dateutil` | v1.0.0     | Parseo robusto de fechas |
-
-### Sin R (desde v2.0.0)
-
-A partir de la v2.0.0 **no se requiere R ni `rsinaica`**. La descarga se realiza directamente sobre el endpoint HTTP de SINAICA mediante `sinaica_descarga.sh`.
-
-### Entorno reproducible (recomendado)
-
-```bash
-# Con venv
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Con conda
-conda create -n wrf-eval python=3.11
-conda activate wrf-eval
-pip install -r requirements.txt
-```
-
----
-
-## Instalación
-
-```bash
-# 1. Clonar el repositorio
-git clone https://github.com/JoseAgustin/SEVA-WRF.git
-cd SEVA-WRF
-
-# 2. Crear y activar entorno Python
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# 3. Crear árbol de directorios de trabajo
-mkdir -p conf observado modelo combinado/ajustados \
-         logs tmp web/css resultados_taylor informes_dicotomicos
-
-# 4. Dar permisos de ejecución a los scripts bash
-chmod +x evaluacion_diaria.sh sinaica_descarga.sh calidad_aire_pipeline.sh
-
-# 5. Exportar variables de entorno
-export EVALUACION_DIR=/opt/wrf/evaluacion
-export WRF_DIR=/LUSTRE/OPERATIVO/EXTERNO-salidas/WRF-CHEM
-```
-
----
-
-## Configuración
-
-### Variables de entorno
-
-| Variable          | Descripción                      | Valor por defecto |
-|-------------------|----------------------------------|-------------------|
-| `EVALUACION_DIR`  | Ruta absoluta del proyecto       | Directorio del script |
-| `WRF_DIR`         | Raíz de los wrfout de WRF-Chem   | `/LUSTRE/OPERATIVO/EXTERNO-salidas/WRF-CHEM` |
-| `PYTHON_BIN`      | Ejecutable Python                | `python3` |
-| `SINAICA_TIPO`    | Tipo de datos SINAICA            | `""` Crude; `"V"` Validado; `"M"` Manual |
-
-### Catálogo de estaciones (`conf/estaciones.conf`)
-
-Archivo TSV con cinco columnas. El catálogo actual incluye **119 registros** en 44 estaciones verificadas de 8 ciudades.
-
-```
-# ESTACION_ID  CIUDAD_WRF  CONT_SINAICA  NOMBRE_RED          NOMBRE_ESTACION
-249            CDMX        O3            Valle de México      Merced
-249            CDMX        PM10          Valle de México      Merced
-501            Pachuca     O3            Pachuca              Primaria Ignacio Zaragoza
-442            Tula        SO2           Tula                 Univ. Tecnológica Tula Tepeji
-```
-
-Los IDs se obtienen en <https://sinaica.inecc.gob.mx> → Datos → buscar estación → `estacionId=XXX` en la URL.
-
----
-
-## Uso
-
-### Modo automático (crontab)
-
-```bash
-# Evalúa el día anterior (sin argumentos)
-bash evaluacion_diaria.sh
-```
-
-**Crontab completo** (evaluación diaria + análisis mensual automatizados):
-
-```cron
-EVALUACION_DIR=/opt/wrf/evaluacion
-WRF_DIR=/LUSTRE/OPERATIVO/EXTERNO-salidas/WRF-CHEM
-PYTHON_BIN=/opt/wrf/evaluacion/.venv/bin/python3
-
-# Evaluación diaria — 07:00
-0 7 * * * $EVALUACION_DIR/evaluacion_diaria.sh \
-    >> $EVALUACION_DIR/logs/cron_$(date +\%Y\%m\%d).log 2>&1
-
-# Diagrama de Taylor del mes anterior — día 1 de cada mes, 08:00
-0 8 1 * * $PYTHON_BIN $EVALUACION_DIR/taylor_mensual.py \
-    --entrada $EVALUACION_DIR/combinado/ajustados \
-    --salida  $EVALUACION_DIR/resultados_taylor \
-    --mes $(date -d "last month" +\%Y-\%m) \
-    >> $EVALUACION_DIR/logs/taylor_$(date +\%Y\%m).log 2>&1
-
-# Informe dicotómico del mes anterior — día 1 de cada mes, 08:30
-30 8 1 * * $PYTHON_BIN $EVALUACION_DIR/informe_dicotomico.py \
-    --entrada $EVALUACION_DIR/combinado/ajustados \
-    --salida  $EVALUACION_DIR/informes_dicotomicos/informe_$(date -d "last month" +\%Y_\%m).docx \
-    --mes $(date -d "last month" +\%Y-\%m) \
-    --csv-auditoria $EVALUACION_DIR/informes_dicotomicos/stats_$(date -d "last month" +\%Y_\%m).csv \
-    >> $EVALUACION_DIR/logs/dicotomico_$(date +\%Y\%m).log 2>&1
-```
-
-### Modo reproceso (fecha específica)
-
-```bash
-bash evaluacion_diaria.sh 2026-02-15
-```
-
-### Descarga individual con `sinaica_descarga.sh`
-
-```bash
-# O3 de la estación 249, un día, salida CSV
-bash sinaica_descarga.sh -e 249 -p O3 -f 2026-02-24 -r 1dia -c
-
-# SO2 validado de la estación 442, un mes completo
-bash sinaica_descarga.sh -e 442 -p SO2 -f 2026-01-01 -r 1mes -t V -c -o so2_ene.csv
-
-# Ayuda completa
-bash sinaica_descarga.sh -h
-```
-
----
-
-## Diagramas de Taylor mensuales
-
-[`taylor_mensual.py`](taylor_mensual.py) consolida los CSV diarios de `combinado/ajustados/` y genera, para cada mes, un diagrama de Taylor y un CSV de estadísticos. Cada punto representa una combinación **Ciudad × Contaminante × Horizonte** (p. ej. *"Pachuca PM10 24h"*, *"Tula SO₂ 48h"*).
-
-### Entrada
-
-```
-combinado/ajustados/eval_<CONT>_<Ciudad>_YYYY-MM-DD.csv
+eval_<CONT>_<Ciudad>_YYYY-MM-DD.csv
 Fecha,Ciudad,max_obs,mod_dia1,mod_dia2,mod_dia3
+2026-06-17,Pachuca,45.0617,11.7382,11.3944,13.6731
 ```
 
-### Salidas por mes
+---
 
-| Archivo                         | Contenido |
-|---------------------------------|-----------|
-| `taylor_YYYY_MM.png`            | Diagrama de Taylor normalizado por σ_obs |
-| `estadisticas_taylor.csv`       | n, n_orig, n_nan, n_lim, n_iqr, σ_obs, σ_mod, R, BIAS, RMSE, MAE, CRMSE, CRMSE_n, p-valor |
+## Scripts Python
 
-Cuando se usa `--ciudades`, los archivos llevan un sufijo (p. ej. `taylor_2026_06_Pachuca-Tula.png`).
+### 1. `taylor_mensual.py`
 
-### Metodología
+**Propósito:** Genera diagramas de Taylor mensuales normalizados para evaluar el desempeño estadístico continuo del modelo (σ, R, CRMSE).
 
-- **Eje radial**: σ_mod / σ_obs (desviación estándar normalizada)
-- **Ángulo θ**: arccos(R), R = correlación de Pearson
-- **CRMSE_n**: √(r² + 1 − 2·r·R), distancia al punto de referencia
-- **Punto REF**: (1, 0) — modelo perfecto
+**Metodología:** Cada punto representa Ciudad × Contaminante × Horizonte. Los valores se normalizan por σ_obs para comparar contaminantes con distintas unidades en el mismo diagrama. Implementa la metodología de Taylor (2001, JGR-Atmospheres).
 
-### Control de calidad de datos observados
-
-Los datos de SINAICA se usan en modo crudo (sin validar), lo que introduce valores negativos y observaciones extraordinariamente altas que distorsionan los estadísticos. El script aplica dos filtros **antes** de calcular cualquier métrica:
-
-**1. Límites físicos por contaminante** — elimina el par (obs, mod) si cualquiera de los dos valores es negativo o excede el techo operativo razonable:
-
-| Contaminante | obs min | obs max (default) | mod min | mod max |
-|--------------|---------|-------------------|---------|---------|
-| O₃           | 0       | 300 ppbv          | 0       | 300 ppbv |
-| PM10         | 0       | 1 000 µg/m³       | 0       | 1 000 µg/m³ |
-| PM2.5        | 0       | **500 µg/m³** (configurable con `--umbral-pm25`) | 0 | 500 µg/m³ |
-| SO₂          | 0       | 1 000 ppbv        | 0       | 1 000 ppbv |
-
-**2. Filtro IQR sobre observaciones de PM2.5** — elimina outliers estadísticos en la serie observada mediante el rango intercuartílico (se aplica *solo* a `max_obs` de PM2.5, nunca al modelo):
-
-```
-Límite inferior = Q1 − k · IQR
-Límite superior = Q3 + k · IQR
-```
-
-- **k = 3.0** (default, conservador): solo elimina valores extraordinarios > ~120 µg/m³ típicamente.
-- **k = 1.5**: criterio boxplot estándar, más agresivo.
-
-Cada par descartado se reporta en el log con etiqueta `[QC]` indicando el motivo y la cuenta por tipo. Al final del mes se imprime un resumen acumulado.
-
-### Uso
+**Control de calidad:** Elimina valores negativos, aplica límites físicos por contaminante y filtro IQR (k=3.0) sobre observaciones de PM2.5.
 
 ```bash
 # Todos los meses, todas las ciudades
 python3 taylor_mensual.py --entrada combinado/ajustados --salida resultados_taylor
 
-# Un mes específico
-python3 taylor_mensual.py --mes 2026-06
+# Un mes específico con filtro de ciudades
+python3 taylor_mensual.py --mes 2026-06 --ciudades Pachuca Tula CDMX
 
-# Filtrar ciudades (por espacio o coma)
-python3 taylor_mensual.py --ciudades Pachuca Tula CDMX
-python3 taylor_mensual.py --ciudades "Pachuca,Tula,CDMX"
-
-# Ajustar techo absoluto de PM2.5 (elimina obs > 120 µg/m³)
-python3 taylor_mensual.py --umbral-pm25 120
-
-# Ajustar factor IQR (más agresivo que el default 3.0)
-python3 taylor_mensual.py --umbral-pm25 120 --iqr-factor 2.5
+# Ajustar umbral PM2.5 y factor IQR
+python3 taylor_mensual.py --umbral-pm25 120 --iqr-factor 3.0
 ```
 
-### Parámetros
+**Parámetros clave:**
 
-| Parámetro           | Descripción                                                | Default               |
-|---------------------|------------------------------------------------------------|-----------------------|
-| `--entrada, -i`     | Directorio con CSV `eval_*.csv`                            | `combinado/ajustados` |
-| `--salida, -o`      | Directorio de salida (PNG y CSV)                           | `.`                   |
-| `--mes, -m`         | Procesar solo este mes (`YYYY-MM`)                         | todos                 |
-| `--ciudades, -c`    | Una o varias ciudades del catálogo                         | todas                 |
-| `--min-pares, -p`   | Mínimo de pares obs/mod válidos por serie                  | `5`                   |
-| `--max-radio, -r`   | Radio máximo del diagrama (unidades normalizadas)          | `1.65`                |
-| `--dpi`             | Resolución de los PNG                                      | `150`                 |
-| `--umbral-pm25`     | Techo absoluto para obs de PM2.5 en µg/m³                 | `500`                 |
-| `--iqr-factor`      | Factor k del filtro IQR sobre obs PM2.5 (k=3 conservador) | `3.0`                 |
+| Parámetro | Descripción | Default |
+|-----------|-------------|---------|
+| `--entrada, -i` | Directorio con CSV | `combinado/ajustados` |
+| `--salida, -o` | Directorio de salida | `.` |
+| `--mes, -m` | Mes específico (YYYY-MM) | todos |
+| `--ciudades, -c` | Ciudades a incluir | todas |
+| `--umbral-pm25` | Techo absoluto PM2.5 µg/m³ | `500` |
+| `--iqr-factor` | Factor k para filtro IQR PM2.5 | `3.0` |
+| `--min-pares, -p` | Mínimo pares válidos por serie | `5` |
+| `--max-radio, -r` | Radio máximo del diagrama | `1.65` |
+| `--dpi` | Resolución de los PNG | `150` |
 
-### Columnas adicionales en el CSV de estadísticos (v2.7.0)
-
-El archivo `estadisticas_taylor.csv` incluye ahora columnas de trazabilidad del control de calidad:
-
-| Columna    | Descripción |
-|------------|-------------|
-| `n_orig`   | Pares totales antes de cualquier filtro |
-| `n_nan`    | Eliminados por NaN / Inf |
-| `n_lim`    | Eliminados por límites físicos (negativos o sobre techo) |
-| `n_iqr`    | Eliminados por filtro IQR (solo PM2.5) |
-| `n`        | Pares válidos usados en el cálculo |
+**Salidas:**
+- `taylor_YYYY_MM[_ciudades].png` — diagrama de Taylor
+- `estadisticas_taylor[_ciudades].csv` — n, n_orig, n_nan, n_lim, n_iqr, σ_obs, σ_mod, R, BIAS, RMSE, MAE, CRMSE, CRMSE_n, p_valor
 
 ---
 
-## Informe de estadísticos dicotómicos
+### 2. `heatmap_desempeno.py`
 
-[`informe_dicotomico.py`](informe_dicotomico.py) genera un documento Word (`.docx`) con los estadísticos de verificación dicotómica mensuales para los cuatro contaminantes regulados, organizados por ciudad y horizonte de pronóstico. Requiere únicamente `python-docx` — **sin dependencia de Node.js ni de ningún otro runtime externo**.
+**Propósito:** Genera mapas de calor (heatmaps) del desempeño temporal del pronóstico con ejes ciudad × mes (o semana), mostrando métricas dicotómicas o continuas con semáforo de colores y bandas de temporada climática.
 
-### Fundamento: tabla de contingencia 2×2
-
-Cada día se clasifica como EVENTO (valor ≥ umbral normativo) o NO EVENTO:
-
-|                  | Obs. EVENTO | Obs. NO EVENTO |
-|------------------|-------------|----------------|
-| **Mod. EVENTO**  | H — Acierto | F — Falsa alarma |
-| **Mod. NO EVENTO** | M — Fallo | C — Rechazo correcto |
-
-### Métricas calculadas
-
-| Métrica  | Fórmula               | Ideal | Descripción |
-|----------|-----------------------|-------|-------------|
-| **POD**  | H / (H + M)           | → 1   | Probabilidad de detección |
-| **FAR**  | F / (H + F)           | → 0   | Tasa de falsas alarmas |
-| **CSI**  | H / (H + M + F)       | → 1   | Índice de éxito crítico |
-| **TSS**  | H/(H+M) − F/(F+C)    | → 1   | Pierce Skill Score |
-| **PC**   | (H + C) / N           | → 1   | Porcentaje correcto |
-| **BIAS** | (H + F) / (H + M)    | = 1   | Sesgo de frecuencia |
-
-### Umbrales normativos
-
-| Contaminante | Umbral     | Unidad  | Norma             |
-|--------------|------------|---------|-------------------|
-| O₃           | 135        | ppbv    | NOM-020-SSA1      |
-| PM10         | 75         | µg/m³   | NOM-025-SSA1-2021 |
-| PM2.5        | 45         | µg/m³   | NOM-025-SSA1-2021 |
-| SO₂          | 130        | ppbv    | NOM-022-SSA1-2010 |
-
-### Contenido del documento Word
-
-El documento se genera en orientación horizontal (A4 landscape) e incluye:
-
-1. **Portada** — título, meses evaluados y filiación institucional
-2. **Metodología** — tabla de umbrales, tabla de contingencia conceptual (coloreada), definición de cada métrica con fórmula, leyenda de semáforo de desempeño
-3. **Resultados por mes → por contaminante**:
-   - Descripción del contaminante y base normativa
-   - Tabla de estadísticos (POD, FAR, CSI, TSS, PC, BIAS) × 3 horizontes, con semáforo de colores (🟢 verde / 🟡 ámbar / 🔴 rojo) por celda
-   - Tabla de contingencia con valores crudos H, M, F, C
-4. **Notas técnicas**
-
-### Uso
+**Métricas disponibles:** POD, FAR, CSI, TSS, PC, BIAS (dicotómicas) y RMSE, R, BIAS_cont (continuas).
 
 ```bash
-# Todos los meses, todas las ciudades
-python3 informe_dicotomico.py --entrada combinado/ajustados --salida informe.docx
+# POD mensual, todos los contaminantes, umbral categoría Mala
+python3 heatmap_desempeno.py --entrada combinado/ajustados --salida resultados_heatmap
 
-# Un mes específico
-python3 informe_dicotomico.py --mes 2026-06 --salida informe_jun2026.docx
+# RMSE semanal, solo O3
+python3 heatmap_desempeno.py --metrica RMSE --resolucion semana --cont O3
 
-# Filtrar ciudades + exportar CSV de auditoría
-python3 informe_dicotomico.py \
-    --ciudades Pachuca Tula CDMX \
-    --csv-auditoria stats_dicotomicos.csv
-
-# Ayuda
-python3 informe_dicotomico.py --help
+# Categoría Muy Mala, horizonte +48h
+python3 heatmap_desempeno.py --metrica POD --categoria muy_mala --horizonte 48h
 ```
 
-### Parámetros
+**Parámetros clave:**
 
-| Parámetro            | Descripción                                              | Default               |
-|----------------------|----------------------------------------------------------|-----------------------|
-| `--entrada, -i`      | Directorio con CSV `eval_*.csv`                          | `combinado/ajustados` |
-| `--salida, -o`       | Ruta del `.docx` de salida                               | `informe_dicotomico.docx` |
-| `--mes, -m`          | Procesar solo este mes (`YYYY-MM`)                       | todos                 |
-| `--ciudades, -c`     | Una o varias ciudades del catálogo                       | todas                 |
-| `--csv-auditoria`    | Ruta opcional para exportar CSV con todos los estadísticos | —                   |
+| Parámetro | Descripción | Default |
+|-----------|-------------|---------|
+| `--metrica, -M` | POD, FAR, CSI, TSS, PC, BIAS, RMSE, R, BIAS_cont | `POD` |
+| `--horizonte, -H` | 24h, 48h, 72h o todos | `todos` |
+| `--resolucion, -r` | mes o semana | `mes` |
+| `--categoria, -k` | mala o muy_mala (NOM-172) | `mala` |
+| `--cont, -C` | O3, PM10, PM25, SO2 | todos |
+| `--ciudades, -c` | Ciudades a incluir | todas |
+| `--sin-anotar` | Omitir valores numéricos en celdas | — |
+
+**Salidas:**
+- `heatmap_<CONT>_<MET>_<HOR>_<RES>_<CAT>.png`
 
 ---
 
-## Estructura del repositorio
+### 3. `roebber_desempeno.py`
 
+**Propósito:** Genera el Diagrama de Rendimiento de Roebber (2009) — POD vs SR (= 1−FAR) con isolíneas de CSI (curvas verdes) y BIAS de frecuencia (líneas diagonales). La estrella dorada en (1,1) representa el pronóstico perfecto.
+
+**Modos de agrupación:**
+- `horizonte` — colores por ciudad, marcadores por horizonte
+- `ciudad` — colores por horizonte
+- `mes` — evolución temporal (un punto por mes)
+- `temporada` — secas frías / secas calientes / lluvias
+- `contaminante` — comparación entre especies
+
+```bash
+# Agrupado por ciudad, todos los horizontes
+python3 roebber_desempeno.py --cont O3 --agrupar ciudad
+
+# Evolución temporal mes a mes
+python3 roebber_desempeno.py --cont O3 --agrupar mes
+
+# Por temporada climática, categoría muy mala
+python3 roebber_desempeno.py --agrupar temporada --categoria muy_mala
 ```
-SEVA-WRF/
-│
-├── evaluacion_diaria.sh          # Orquestador diario (crontab)
-├── sinaica_descarga.sh           # Descarga HTTP directa de SINAICA
-├── calidad_aire_pipeline.sh      # Separación y consolidación de observaciones
-├── 01_extrae.py                  # Pipeline histórico mensual (modo manual)
-├── taylor_mensual.py             # Diagramas de Taylor mensuales
-├── informe_dicotomico.py         # Informe Word de estadísticos dicotómicos
-├── requirements.txt              # Dependencias Python
-├── RELEASE_NOTES.md              # Historial detallado de versiones
-│
-├── conf/
-│   └── estaciones.conf           # Catálogo de estaciones SINAICA (119 registros, TSV)
-│
-├── observado/                    # CSVs consolidados por ciudad
-│   ├── CDMX_O3_consolidado.csv
-│   └── ...
-│
-├── modelo/                       # Series históricas del modelo WRF-Chem
-│   └── maximos_diarios_o3_CDMX.csv
-│
-├── combinado/
-│   ├── combinado_CDMX_O3.csv
-│   └── ajustados/
-│       └── eval_<CONT>_<Ciudad>_YYYY-MM-DD.csv
-│
-├── resultados_taylor/            # Salidas de taylor_mensual.py
-│   ├── taylor_YYYY_MM.png
-│   └── estadisticas_taylor.csv
-│
-├── informes_dicotomicos/         # Salidas de informe_dicotomico.py
-│   ├── informe_dicotomico_YYYY_MM.docx
-│   └── dicotomico_stats_YYYY_MM.csv
-│
-├── logs/
-│   └── evaluacion_YYYY-MM-DD.log
-│
-├── tmp/                          # Scratch (limpiado al final de cada ejecución)
-│   ├── raw_sinaica/YYYY-MM-DD/
-│   ├── pipeline_work/
-│   └── extraidos/
-│
-└── web/                          # Sitio web estático
-    ├── index.html
-    ├── css/estilo.css
-    └── YYYY/MM/evaluacion_YYYY-MM-DD.html
-```
+
+**Parámetros clave:**
+
+| Parámetro | Descripción | Default |
+|-----------|-------------|---------|
+| `--agrupar, -g` | horizonte, ciudad, mes, temporada, contaminante | `horizonte` |
+| `--horizonte, -H` | 24h, 48h, 72h o todos | `todos` |
+| `--categoria, -k` | mala o muy_mala | `mala` |
+| `--separar-cont` | Un PNG independiente por contaminante | — |
+
+**Salidas:**
+- `roebber_<CONT>_<AGRUP>_<HOR>_<CAT>.png`
 
 ---
 
-## Flujo de datos
+### 4. `informe_dicotomico.py`
 
-```mermaid
-graph TD
-    %% Estilos de los nodos
-    classDef config fill:#f9f9f9,stroke:#333,stroke-width:2px;
-    classDef script fill:#d4edda,stroke:#28a745,stroke-width:2px;
-    classDef folder fill:#cce5ff,stroke:#007bff,stroke-width:2px;
-    classDef model fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
+**Propósito:** Genera un documento Word (.docx) en orientación horizontal (A4 landscape) con estadísticos de verificación dicotómica mensuales (POD, FAR, CSI, TSS, PC, BIAS de frecuencia) y tablas de contingencia (H, M, F, C) por ciudad, contaminante y horizonte. Sin dependencia de Node.js — 100% Python con `python-docx`.
 
-    %% Nodos principales (Ramas de origen)
-    A[conf/estaciones.conf]:::config -->|IDs| B(sinaica_descarga.sh):::script
-    B -->|CSV crudo| C(Normalización awk):::script
-    C --> D(calidad_aire_pipeline.sh):::script
-    D -->|*_consolidado.csv| E[(observado/)]:::folder
+**Umbrales normativos (NOM-172-SEMARNAT-2023):**
 
-    F[LUSTRE / wrfout × 3 fechas]:::model --> G(extract_dia.py):::script
-    G -->|ext_*.csv| H(combinar_dia.py):::script
-    E --> H
+| Categoría | O₃ | PM10 | PM2.5 | SO₂ |
+|-----------|-----|------|-------|-----|
+| **Mala** (naranja) | 135 ppb | 132 µg/m³ | 79 µg/m³ | 185 ppb |
+| **Muy Mala** (rojo) | 175 ppb | 213 µg/m³ | 130 µg/m³ | 304 ppb |
 
-    %% Combinación
-    H -->|eval_*.csv| I[(combinado/ajustados/)]:::folder
+```bash
+# Categoría mala (default)
+python3 informe_dicotomico.py --entrada combinado/ajustados --salida informe_mala.docx
 
-    %% Derivaciones
-    I -->|diario| J(stats_dia.py):::script
-    I -->|acumulado mensual| O(taylor_mensual.py):::script
-    I -->|acumulado mensual| Q(informe_dicotomico.py):::script
+# Categoría muy mala
+python3 informe_dicotomico.py --categoria muy_mala --salida informe_muy_mala.docx
 
-    %% Salidas de evaluación diaria
-    J -->|stats_YYYY-MM-DD.json| K(generar_html.py):::script
-    K --> L[(web/YYYY/MM/)]:::folder
-    L --> M(actualizar_indice.py):::script
-    M --> N[web/index.html]:::config
-
-    %% Salidas de reportes mensuales
-    O -->|taylor_YYYY_MM.png| P[(resultados_taylor/)]:::folder
-    O -->|estadisticas_taylor.csv| P
-    
-    Q -->|informe_dicotomico_YYYY_MM.docx| R[(informes_dicotomicos/)]:::folder
-    Q -->|dicotomico_stats.csv| R
+# Con CSV de auditoría
+python3 informe_dicotomico.py --csv-auditoria stats_dicotomicos.csv
 ```
+
+**Parámetros clave:**
+
+| Parámetro | Descripción | Default |
+|-----------|-------------|---------|
+| `--categoria, -k` | mala o muy_mala (NOM-172) | `mala` |
+| `--mes, -m` | Solo este mes (YYYY-MM) | todos |
+| `--ciudades, -c` | Ciudades a incluir | todas |
+| `--csv-auditoria` | Exportar CSV con estadísticos | — |
+| `--umbral-pm25` | Techo PM2.5 µg/m³ (QC) | `500` |
+| `--iqr-factor` | Factor IQR outliers PM2.5 | `3.0` |
+
+**Contenido del documento:**
+1. Portada con categoría en color (naranja/rojo)
+2. Tabla de umbrales NOM-172 (ambas categorías)
+3. Tabla de contingencia conceptual coloreada
+4. Definición de métricas con fórmulas
+5. Leyenda de semáforo de desempeño
+6. Por cada mes → contaminante: tabla de estadísticos + tabla de contingencia H/M/F/C
+
+**Salidas:**
+- `informe_dicotomico_<CAT>.docx`
+- `dicotomico_stats.csv` (opcional) — N, n_orig, n_nan, n_lim, n_iqr, H, M, F, C, POD, FAR, CSI, TSS, PC, BIAS
+
+---
+
+### 5. `informe_graficas.py`
+
+**Propósito:** Recolecta automáticamente todas las imágenes PNG generadas por `taylor_mensual.py`, `heatmap_desempeno.py` y `roebber_desempeno.py`, genera descripciones técnicas automáticas para cada una, y produce un documento Word (.docx) integrado organizado en tres capítulos.
+
+```bash
+# Recolectar de los directorios por defecto
+python3 informe_graficas.py
+
+# Especificar directorios y contaminantes
+python3 informe_graficas.py \
+    --taylor    resultados_taylor \
+    --heatmap   resultados_heatmap \
+    --roebber   resultados_roebber \
+    --salida    informe_visualizaciones.docx \
+    --cont      O3 PM10
+```
+
+**Parámetros clave:**
+
+| Parámetro | Descripción | Default |
+|-----------|-------------|---------|
+| `--taylor` | Directorio PNG de Taylor | `resultados_taylor` |
+| `--heatmap` | Directorio PNG de heatmaps | `resultados_heatmap` |
+| `--roebber` | Directorio PNG de Roebber | `resultados_roebber` |
+| `--salida, -o` | Ruta del .docx de salida | `informe_visualizaciones.docx` |
+| `--cont, -C` | Filtrar por contaminante | todos |
+
+**Contenido del documento:**
+- **Cap. 1 — Diagramas de Taylor:** descripción metodológica + imagen + ficha de metadatos por figura
+- **Cap. 2 — Mapas de calor:** métrica evaluada, horizonte, umbral y descripción de cómo interpretar cada celda
+- **Cap. 3 — Diagramas de Roebber:** agrupación, interpretación de la trayectoria, ubicación de umbrales NOM-172
+- **Notas metodológicas:** control de calidad, umbrales, temporadas, horizontes, referencias
+
+---
+
+### 6. `percentiles_obs.py`
+
+**Propósito:** Calcula y visualiza los percentiles empíricos (P10, P25, P50, P75, P90, P95, P99) de las observaciones SINAICA y los compara contra los percentiles del modelo WRF-Chem, organizados por ciudad, mes y contaminante.
+
+**Motivación científica:** Los umbrales normativos nacionales no reflejan la climatología local. El P90 de O₃ en Tula puede diferir en 40+ ppb del P90 de Cuernavaca. Este módulo permite:
+1. Conocer la distribución empírica de concentraciones por ciudad y mes
+2. Detectar si el modelo subestima sistemáticamente los percentiles extremos
+3. Identificar diferencias estacionales en la distribución
+
+```bash
+# Todos los contaminantes, P90 de referencia
+python3 percentiles_obs.py --entrada combinado/ajustados
+
+# P95, solo O3, ciudades específicas para la serie temporal
+python3 percentiles_obs.py --cont O3 --percentil 95 \
+    --serie-ciudades CDMX Tula Pachuca
+
+# Con umbral PM2.5 ajustado
+python3 percentiles_obs.py --umbral-pm25 120
+```
+
+**Parámetros clave:**
+
+| Parámetro | Descripción | Default |
+|-----------|-------------|---------|
+| `--percentil, -p` | P10, P25, P50, P75, P90, P95, P99 | `90` |
+| `--serie-ciudades` | Ciudades para serie temporal | primeras 3 |
+| `--horizonte, -H` | 24h, 48h, 72h o todos | `todos` |
+
+**Salidas por contaminante:**
+- `percentiles_<CONT>_P<N>_heatmap_obs_<HOR>.png` — P_N observado (grande) y modelado (pequeño) por ciudad × mes
+- `percentiles_<CONT>_P<N>_heatmap_sesgo_<HOR>.png` — sesgo = (mod/obs − 1), divergente rojo/azul
+- `percentiles_<CONT>_QQ_<HOR>.png` — diagrama Q-Q por temporada con marcadores en P50, P90 y P95
+- `percentiles_<CONT>_serie_<Ciudad>_<HOR>.png` — serie mensual P25/P50/P75/P90 con bandas IQR
+- `tabla_percentiles_<CONT>.csv` — ciudad × mes × horizonte con P10..P99 y métricas derivadas
+
+---
+
+### 7. `curva_habilidad.py`
+
+**Propósito:** Analiza la **sensibilidad del pronóstico WRF-Chem a distintos umbrales de concentración** mediante el barrido continuo de niveles de alerta. Genera la "trayectoria de habilidad" en el espacio de Roebber (2009) al variar el umbral, revelando el comportamiento estructural del modelo independientemente del umbral normativo.
+
+**Preguntas que responde:**
+1. ¿En qué umbral el modelo maximiza su habilidad (CSI_max)?
+2. ¿El umbral normativo NOM-172 coincide con el óptimo para WRF-Chem?
+3. ¿El modelo tiene sesgo de frecuencia independiente del umbral?
+4. ¿La habilidad difiere entre temporadas (secas vs lluvias)?
+
+```bash
+# Agrupado por ciudad, barrido completo
+python3 curva_habilidad.py --cont O3 --agrupar ciudad
+
+# Por temporada climática
+python3 curva_habilidad.py --cont O3 --agrupar temporada --horizonte 24h
+
+# Por horizonte (los tres en un diagrama)
+python3 curva_habilidad.py --cont O3 --agrupar horizonte
+
+# Paso más fino para publicación
+python3 curva_habilidad.py --cont O3 --paso 2 --min-eventos 5
+```
+
+**Parámetros clave:**
+
+| Parámetro | Descripción | Default |
+|-----------|-------------|---------|
+| `--agrupar, -g` | ciudad, temporada, horizonte | `ciudad` |
+| `--paso` | Paso del barrido de umbrales | `5.0` |
+| `--min-eventos` | Mínimo de eventos obs por punto | `3` |
+| `--sin-suavizar` | Desactivar suavizado Savitzky-Golay | — |
+
+**Salidas:**
+- `curva_habilidad_<CONT>_<HOR>_<AGRUP>.png` — panel 4 subgráficas:
+  - (a) POD y SR vs umbral con banda de incertidumbre binomial 90%
+  - (b) CSI y TSS vs umbral con marcador del CSI_max
+  - (c) BIAS de frecuencia vs umbral (línea ideal en b=1)
+  - (d) Trayectoria de habilidad en el espacio de Roebber, coloreada por nivel de umbral; diamantes ◆ = umbrales NOM-172
+- `tabla_barrido_umbrales.csv` — umbral × agrupación × horizonte con POD, SR, FAR, CSI, TSS, BIAS, H, M, F, C
+
+---
+
+### 8. `analisis_espacial_percentil.py`
+
+**Propósito:** Realiza la evaluación dicotómica usando **umbrales adaptativos locales** derivados de los percentiles empíricos de las observaciones de cada ciudad, en lugar del umbral normativo nacional fijo. Compara el diagnóstico adaptativo vs el diagnóstico con umbral NOM-172.
+
+**Motivación científica:** Una ciudad con concentraciones basales altas (Tula, fuentes industriales) tendrá muchos eventos incluso con un modelo mediocre si se usa el umbral NOM-172 nacional. El umbral adaptativo por percentil local responde la pregunta: ¿el modelo detecta los días de concentración extrema **para cada ciudad**?
+
+**Tres modos de umbral adaptativo:**
+
+| Modo | Umbral de evento | Pregunta |
+|------|-----------------|----------|
+| `ciudad_mes` | P_N de obs de esa ciudad en ese mes | ¿Detecta los extremos locales mensuales? |
+| `ciudad` | P_N de obs de esa ciudad en todo el período | ¿Detecta los extremos de cada ciudad? |
+| `dominio` | P_N de obs de todas las ciudades | ¿Detecta los extremos del dominio? |
+
+```bash
+# P90 local por ciudad × mes (más local)
+python3 analisis_espacial_percentil.py --cont O3 --percentiles 90
+
+# P75 y P90, modo ciudad, con comparación vs NOM-172
+python3 analisis_espacial_percentil.py --cont O3 --percentiles 75 90 \
+    --modo ciudad --comparar-nom172
+
+# Modo dominio
+python3 analisis_espacial_percentil.py --modo dominio --cont PM10
+```
+
+**Parámetros clave:**
+
+| Parámetro | Descripción | Default |
+|-----------|-------------|---------|
+| `--percentiles, -p` | Uno o varios percentiles | `90` |
+| `--modo, -m` | ciudad_mes, ciudad, dominio | `ciudad_mes` |
+| `--comparar-nom172` | Generar panel comparativo | — |
+
+**Salidas por contaminante × horizonte × percentil:**
+- `espacial_<CONT>_<HOR>_<MODO>_P<N>.png` — heatmap 4 métricas (POD/FAR/CSI/TSS) con umbral adaptativo
+- `espacial_<CONT>_<HOR>_umbral_P<N>_<MODO>.png` — valor del umbral adaptativo (izq.) y diferencia vs NOM-172 (der.)
+- `espacial_<CONT>_<HOR>_delta_P<N>_<MODO>.png` — diferencia métrica_adapt − métrica_nom172 (verde=mejora)
+- `espacial_<CONT>_<HOR>_comparacion_P<N>_<MODO>.png` — panel lado a lado adaptativo vs NOM-172
+- `tabla_espacial_percentil_<CONT>.csv` — umbral_adapt, umbral_nom172, dif_umbral, métricas _adapt y _nom172, delta_POD/FAR/CSI/TSS
+
+---
+
+### 9. `pronostico_ponderado.py`
+
+**Propósito:** Combina los tres horizontes de pronóstico WRF-Chem (+24h, +48h, +72h) mediante pesos derivados del desempeño histórico (RMSE inverso) para generar un **pronóstico ponderado óptimo para HOY y para MAÑANA**, separado por temporada climática.
+
+**Esquema de horizontes:**
+```
+Archivo eval_<CONT>_<Ciudad>_FECHA.csv:
+  mod_dia1 → run de (FECHA−1) → +24h → válido para FECHA
+  mod_dia2 → run de (FECHA−2) → +48h → válido para FECHA
+  mod_dia3 → run de (FECHA−3) → +72h → válido para FECHA
+
+HOY   (T):   P = w1·dia1(T) + w2·dia2(T) + w3·dia3(T)
+MAÑANA(T+1): P = w1'·dia1(T+1) + w2'·dia2(T)  [pesos renormalizados]
+```
+
+**Métodos de ponderación:**
+
+| Método | Descripción |
+|--------|-------------|
+| `rmse_inv` | w_i = (1/RMSE_i) / Σ(1/RMSE_j) — mayor peso al horizonte más preciso |
+| `igual` | w_i = 1/3 — sin preferencia entre horizontes |
+| `manual` | `--w1 --w2 --w3` — pesos definidos por el usuario (se renormalizan) |
+
+Los pesos se calculan **por contaminante y por temporada climática** para capturar la variabilidad estacional del desempeño.
+
+```bash
+# Pesos por RMSE inverso, fecha automática (último día disponible)
+python3 pronostico_ponderado.py --entrada combinado/ajustados
+
+# Fecha específica
+python3 pronostico_ponderado.py --fecha 2026-06-30
+
+# Pesos iguales (referencia)
+python3 pronostico_ponderado.py --pesos igual
+
+# Pesos manuales
+python3 pronostico_ponderado.py --pesos manual --w1 0.5 --w2 0.3 --w3 0.2
+
+# Sin separación por temporada
+python3 pronostico_ponderado.py --sin-temporada
+
+# Solo O3 en ciudades específicas
+python3 pronostico_ponderado.py --cont O3 --ciudades CDMX Tula Pachuca
+```
+
+**Parámetros clave:**
+
+| Parámetro | Descripción | Default |
+|-----------|-------------|---------|
+| `--fecha, -f` | Fecha de referencia HOY (YYYY-MM-DD) | último día disponible |
+| `--pesos, -p` | rmse_inv, igual, manual | `rmse_inv` |
+| `--w1, --w2, --w3` | Pesos manuales | 0.5, 0.3, 0.2 |
+| `--sin-temporada` | Pesos globales sin separar por temporada | — |
+| `--cont, -C` | O3, PM10, PM25, SO2 | todos |
+| `--ciudades, -c` | Ciudades a incluir | todas |
+
+**Salidas:**
+- `pesos_historicos.csv` — RMSE, MAE, R, n, w1, w2, w3 por contaminante × temporada
+- `pronostico_ponderado_HOY.csv` — mod_ponderado_hoy, incertidumbre_1σ, obs_hoy, w1, w2, w3 por ciudad × contaminante
+- `pronostico_ponderado_MANANA.csv` — mod_ponderado_manana, horizontes_usados, nota de disponibilidad
+- `serie_ponderada_historica.csv` — pronóstico ponderado para todo el histórico (validación)
+- `pesos_por_temporada.png` — barras apiladas de pesos con RMSE en eje secundario
+- `pronostico_ponderado_<CONT>_serie.png` — serie temporal con banda ±1σ, coloreada por temporada
+- `pronostico_ponderado_scatter.png` — scatter obs vs ponderado con regresión y R² por contaminante
+
 ---
 
 ## Ciudades y contaminantes
 
 ### Dominio WRF-Chem
 
-| Ciudad (modelo) | Red SINAICA                              | Lat S | Lat N | Lon O    | Lon E   | Est. |
-|-----------------|------------------------------------------|-------|-------|----------|---------|------|
-| CDMX            | Valle de México                          | 19.20 | 19.70 | −99.30   | −98.85  | 23   |
-| Toluca          | Toluca                                   | 19.23 | 19.39 | −99.72   | −99.50  | 5    |
-| Puebla          | Puebla                                   | 18.95 | 19.12 | −98.32   | −98.10  | 5    |
-| Tlaxcala        | Tlaxcala                                 | 19.29 | 19.36 | −98.26   | −98.15  | 1    |
-| Pachuca         | Pachuca / Mineral de la Reforma          | 20.03 | 20.13 | −98.80   | −98.67  | 3    |
-| Cuernavaca      | Cuernavaca                               | 18.89 | 18.98 | −99.26   | −99.14  | 1    |
-| SJdelRio        | San Juan del Río                         | 20.36 | 20.41 | −100.01  | −99.93  | 1    |
-| Tula            | Tula / Tepeji / Atitalaquia / Atotonilco | 19.89 | 20.18 | −99.44   | −99.09  | 5    |
+| Ciudad | Red SINAICA | Lat S | Lat N | Lon O | Lon E |
+|--------|-------------|-------|-------|-------|-------|
+| CDMX | Valle de México | 19.20 | 19.70 | −99.30 | −98.85 |
+| Cuernavaca | Cuernavaca | 18.89 | 18.98 | −99.26 | −99.14 |
+| Pachuca | Pachuca / Mineral de la Reforma | 20.03 | 20.13 | −98.80 | −98.67 |
+| Puebla | Puebla | 18.95 | 19.12 | −98.32 | −98.10 |
+| SJdelRio | San Juan del Río | 20.36 | 20.41 | −100.01 | −99.93 |
+| Tlaxcala | Tlaxcala | 19.29 | 19.36 | −98.26 | −98.15 |
+| Toluca | Toluca | 19.23 | 19.39 | −99.72 | −99.50 |
+| Tula | Tula / Tepeji / Atitalaquia | 19.89 | 20.18 | −99.44 | −99.09 |
 
-### Contaminantes y umbrales
+### Contaminantes evaluados
 
-| Contaminante      | Clave   | Unidad  | Umbral    | Norma             |
-|-------------------|---------|---------|-----------|-------------------|
-| Ozono             | `O3`    | ppbv    | 135 ppbv  | NOM-020-SSA1      |
-| PM10              | `PM10`  | µg/m³   | 75 µg/m³  | NOM-025-SSA1-2021 |
-| PM2.5             | `PM25`  | µg/m³   | 45 µg/m³  | NOM-025-SSA1-2021 |
-| Dióxido de azufre | `SO2`   | ppbv    | 130 ppbv  | NOM-022-SSA1-2010 |
-
-### Disponibilidad por ciudad
-
-| Ciudad     | O₃ | PM10 | PM2.5 | SO₂ |
-|------------|:--:|:----:|:-----:|:---:|
-| CDMX       | ✓  | ✓    | ✓     | —   |
-| Toluca     | ✓  | ✓    | ✓     | —   |
-| Puebla     | ✓  | ✓    | ✓     | —   |
-| Tlaxcala   | ✓  | ✓    | ✓     | —   |
-| Pachuca    | ✓  | ✓    | ✓     | —   |
-| Cuernavaca | ✓  | ✓    | ✓     | —   |
-| SJdelRio   | ✓  | —    | ✓     | —   |
-| Tula       | ✓  | ✓    | ✓     | ✓   |
+| Clave | Nombre | Unidad | O₃ | PM10 | PM2.5 | SO₂ |
+|-------|--------|--------|----|------|-------|-----|
+| `O3` | Ozono | ppbv | ✓ | — | — | — |
+| `PM10` | PM10 | µg/m³ | — | ✓ | — | — |
+| `PM25` | PM2.5 | µg/m³ | — | — | ✓ | — |
+| `SO2` | Dióxido de azufre | ppbv | — | — | — | ✓ (solo Tula) |
 
 ---
 
-## Métricas de validación
+## Umbrales normativos
 
-### Continuas (stats_dia.py y taylor_mensual.py)
+**NOM-172-SEMARNAT-2023** (DOF 25/01/2024) — Índice AIRE Y SALUD:
 
-| Métrica | Fórmula                                          | Descripción |
-|---------|--------------------------------------------------|-------------|
-| BIAS    | mean(mod − obs)                                  | Sesgo sistemático |
-| RMSE    | √mean((mod − obs)²)                              | Error cuadrático medio |
-| MAE     | mean(\|mod − obs\|)                              | Error absoluto medio |
-| R       | Pearson                                          | Coeficiente de correlación |
-| CRMSE   | √(σ_mod² + σ_obs² − 2·σ_mod·σ_obs·R)           | RMSE centrado (Taylor 2001) |
-
-### Dicotómicas (stats_dia.py e informe_dicotomico.py)
-
-| Métrica  | Fórmula             | Ideal | Descripción |
-|----------|---------------------|-------|-------------|
-| POD      | H / (H + M)         | → 1   | Probabilidad de detección |
-| FAR      | F / (H + F)         | → 0   | Tasa de falsas alarmas |
-| CSI      | H / (H + M + F)     | → 1   | Índice de éxito crítico |
-| TSS      | POD − F/(F+C)       | → 1   | Pierce Skill Score |
-| PC       | (H + C) / N         | → 1   | Porcentaje correcto |
-| BIAS     | (H + F) / (H + M)   | = 1   | Sesgo de frecuencia |
-
-### Semáforo de desempeño (informe_dicotomico.py)
-
-| Métrica | 🟢 Bueno      | 🟡 Aceptable   | 🔴 Deficiente |
-|---------|---------------|----------------|---------------|
-| POD     | ≥ 0.700       | 0.400 – 0.699  | < 0.400       |
-| FAR     | ≤ 0.300       | 0.301 – 0.500  | > 0.500       |
-| CSI     | ≥ 0.400       | 0.200 – 0.399  | < 0.200       |
-| TSS     | ≥ 0.400       | 0.100 – 0.399  | < 0.100       |
-| BIAS    | \|BIAS-1\|≤0.3| 0.3 – 0.6      | > 0.6         |
+| Categoría | Color | O₃ | PM10 | PM2.5 | SO₂ | Métrica base |
+|-----------|-------|-----|------|-------|-----|--------------|
+| **Mala** | 🟠 Naranja | 135 ppb | 132 µg/m³ | 79 µg/m³ | 185 ppb | Prom. 1h / prom. móvil pond. 12h |
+| **Muy Mala** | 🔴 Rojo | 175 ppb | 213 µg/m³ | 130 µg/m³ | 304 ppb | Ídem |
 
 ---
 
-## Manejo de errores
+## Temporadas climáticas
 
-| Situación | Comportamiento |
-|-----------|----------------|
-| 0 de 3 wrfout disponibles | **Aborta** con código 1 |
-| 1 ó 2 de 3 wrfout disponibles | Continúa; rellena con `NA` los horizontes faltantes |
-| Descarga SINAICA fallida (3 reintentos) | Advertencia; continúa con observaciones previas |
-| CSV con < 18 registros horarios | Descartado como inválido |
-| Variable de contaminante ausente en wrfout | `NaN` + advertencia `[EXTRACT]` |
-| API SINAICA retorna > 24 registros | Recorte automático + aviso `[TRIM]` |
-| CSV `eval_*.csv` con nombre no reconocido | Omitido con advertencia; ejecución continúa |
-| Serie con < `--min-pares` pares válidos | `taylor_mensual.py`: omite Ciudad×Cont×Horizonte |
-| Ciudad inválida en `--ciudades` | `taylor_mensual.py` / `informe_dicotomico.py`: aborta con catálogo válido |
-| Serie con < 5 días válidos | `informe_dicotomico.py`: muestra "N/D" en la celda |
-| Obs. o mod. negativos en cualquier contaminante | `taylor_mensual.py`: par descartado silenciosamente; reportado en log `[QC]` |
-| Obs. PM2.5 > `--umbral-pm25` (default 500 µg/m³) | `taylor_mensual.py`: par descartado; reportado como `n_lim` en log y CSV |
-| Obs. PM2.5 fuera de Q1 ± k·IQR | `taylor_mensual.py`: par descartado; reportado como `n_iqr` en log y CSV |
-| IQR = 0 en serie PM2.5 (serie constante) | Filtro IQR omitido; se conservan todos los valores no negativos |
+Definidas para el centro de México y usadas en todos los módulos:
+
+| Temporada | Meses | Color en gráficas | Característica |
+|-----------|-------|-------------------|----------------|
+| **Secas frías** | nov–feb | Azul | Menor convección, máx. PM10 |
+| **Secas calientes** | mar–may | Naranja | Máximo anual de O₃ fotoquímico |
+| **Lluvias** | jun–oct | Verde | Mayor convección, lavado de contaminantes |
+
+---
+
+## Flujo de trabajo recomendado
+
+```bash
+# 1. Diagramas de Taylor mensuales (desempeño continuo)
+python3 taylor_mensual.py --umbral-pm25 120 --iqr-factor 3.0
+
+# 2. Heatmaps de desempeño (visión temporal)
+python3 heatmap_desempeno.py --metrica POD --categoria mala
+python3 heatmap_desempeno.py --metrica RMSE
+
+# 3. Diagramas de Roebber (desempeño dicotómico)
+python3 roebber_desempeno.py --agrupar temporada
+python3 roebber_desempeno.py --agrupar horizonte
+
+# 4. Informe dicotómico Word (ambas categorías NOM-172)
+python3 informe_dicotomico.py --categoria mala     --salida informe_mala.docx
+python3 informe_dicotomico.py --categoria muy_mala --salida informe_muy_mala.docx
+
+# 5. Informe integrado con todas las visualizaciones
+python3 informe_graficas.py --salida informe_visualizaciones.docx
+
+# 6. Análisis de percentiles locales
+python3 percentiles_obs.py --percentil 90 --umbral-pm25 120
+
+# 7. Curva de habilidad multi-umbral
+python3 curva_habilidad.py --agrupar temporada --cont O3
+python3 curva_habilidad.py --agrupar horizonte --cont PM10
+
+# 8. Análisis espacial con umbral adaptativo
+python3 analisis_espacial_percentil.py --percentiles 75 90 \
+    --modo ciudad_mes --comparar-nom172
+
+# 9. Pronóstico ponderado para hoy y mañana
+python3 pronostico_ponderado.py --pesos rmse_inv --umbral-pm25 120
+```
 
 ---
 
 ## Changelog
 
-Consultar el historial detallado en [RELEASE_NOTES.md](RELEASE_NOTES.md).
-
-| Versión    | Resumen |
-|------------|---------|
-| **v2.7.0** | Control de calidad de datos crudos en `taylor_mensual.py`: eliminación de valores negativos en todos los contaminantes mediante límites físicos por contaminante (`LIMITES_VALIDOS`); filtro IQR configurable sobre observaciones de PM2.5 (`--umbral-pm25`, `--iqr-factor`). CSV de estadísticos ampliado con columnas `n_orig`, `n_nan`, `n_lim`, `n_iqr`. Corrección de type hints a `Optional`/`List` de `typing` para compatibilidad con Python 3.8/3.9. Eliminación de dependencias de Node.js/npm en los requisitos del sistema. |
-| **v2.6.0** | Nuevo script `informe_dicotomico.py`: genera un documento Word (`.docx`) con estadísticos dicotómicos mensuales (POD, FAR, CSI, TSS, PC, BIAS de frecuencia) y tablas de contingencia (H, M, F, C) por Ciudad × Contaminante × Horizonte; semáforo de colores por celda; orientación A4 landscape; sin dependencia de Node.js. Nueva dependencia: `python-docx`. Nuevo directorio `informes_dicotomicos/`. |
-| **v2.5.0** | Nuevo script `taylor_mensual.py`: diagramas de Taylor mensuales normalizados (`taylor_YYYY_MM.png`) + CSV de estadísticos (`estadisticas_taylor.csv`). Argumento `--ciudades` para filtrar una o varias ciudades del dominio; sufijo en nombres de salida cuando se filtra. Nueva dependencia: `scipy`. |
-| **v2.4.0** | SO₂ como cuarto contaminante (NOM-022-SSA1-2010, umbral 130 ppbv); 5 estaciones en Tula; cuarta pestaña en HTML. |
-| **v2.3.0** | Nueva ciudad Tula de Allende; estación Mineral de la Reforma en Pachuca. Catálogo: 119 registros en 44 estaciones. |
-| **v2.2.0** | Corrección `CIUDAD_OBS_MAP[CDMX]`. Catálogo de 96 estaciones sin IDs marcador. |
-| **v2.1.0** | Tres correcciones en `combinar_dia.py`; filtro `[TRIM]` en `sinaica_descarga.sh`. |
-| **v2.0.0** | Eliminación de R/rsinaica; descarga directa vía `sinaica_descarga.sh`. |
-| **v1.0.0** | Versión inicial con 7 ciudades y descarga vía R/rsinaica. |
+| Versión | Cambios |
+|---------|---------|
+| **v1.0.0** | Suite inicial con 9 módulos: taylor_mensual, heatmap_desempeno, roebber_desempeno, informe_dicotomico, informe_graficas, percentiles_obs, curva_habilidad, analisis_espacial_percentil, pronostico_ponderado |
 
 ---
 
-## Contribución
+## Referencias
 
-1. Fork del repositorio.
-2. Rama descriptiva: `git checkout -b feat/nombre-de-la-mejora`.
-3. Commits atómicos con mensajes claros en español o inglés.
-4. Verificar sintaxis bash: `bash -n evaluacion_diaria.sh`.
-5. Probar localmente: `bash evaluacion_diaria.sh <fecha-histórica>`.
-6. Abrir un Pull Request describiendo el cambio y su motivación.
-
-### Reporte de errores
-
-Abrir un Issue incluyendo: fecha de ejecución, últimas 50 líneas del log (`tail -50 logs/evaluacion_<fecha>.log`), y salida de `bash --version` y `python3 --version`.
+- Taylor, K.E., 2001: Summarizing multiple aspects of model performance in a single diagram. *JGR-Atmospheres*, 106(D7), 7183–7192.
+- Roebber, P.J., 2009: Visualizing multiple measures of forecast quality. *Wea. Forecasting*, 24, 749–755. doi:10.1175/2008WAF2222159.1
+- NOM-172-SEMARNAT-2023: Índice AIRE Y SALUD. DOF 25/01/2024.
+- NOM-025-SSA1-2021: Valores límite permisibles para la concentración de PM10 y PM2.5.
+- NOM-020-SSA1-2021: Valor límite permisible para la concentración de ozono.
+- NOM-022-SSA1-2019: Valor límite permisible para SO₂.
 
 ---
 
 ## Licencia
 
-MIT License — ver archivo [LICENSE](LICENSE).
+MIT License — Copyright © 2026 ICAyCC, UNAM
 
-```
-Copyright (c) 2026  Pipeline WRF-Chem / Red de Calidad del Aire — Centro de México
-```
+Código fuente del pipeline operativo: [ddsinaica](https://github.com/JoseAgustin/ddsinaica)
